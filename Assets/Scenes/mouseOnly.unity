@@ -204,6 +204,22 @@ PrefabInstance:
       propertyPath: m_Enabled
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 8573135805573302696, guid: 60618ffb7ac8e5e4b896d87996f1f032, type: 3}
+      propertyPath: archHeight
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8573135805573302696, guid: 60618ffb7ac8e5e4b896d87996f1f032, type: 3}
+      propertyPath: gatherDuration
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8573135805573302696, guid: 60618ffb7ac8e5e4b896d87996f1f032, type: 3}
+      propertyPath: stretchDuration
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8573135805573302696, guid: 60618ffb7ac8e5e4b896d87996f1f032, type: 3}
+      propertyPath: compressedLengthFraction
+      value: 0.2
+      objectReference: {fileID: 0}
     - target: {fileID: 8659352624619003506, guid: 60618ffb7ac8e5e4b896d87996f1f032, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
