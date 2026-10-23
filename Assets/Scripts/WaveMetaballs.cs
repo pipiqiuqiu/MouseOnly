@@ -441,7 +441,7 @@ public sealed class WaveMetaballs : MonoBehaviour
                 * waveAmplitudeVariation[i];
             position.z += shapeGrowth * waveAmplitude * Mathf.Sin(2f * Mathf.PI * wavePosition) + tideOffset;
             pointMarkers[i].position = position;
-            if (moveSourcePointsWithMetaballs)
+            if (moveSourcePointsWithMetaballs && sourcePointTransforms[i] != null)
                 // Keep each source point at the same center as its metaball.
                 sourcePointTransforms[i].position = sourcePointStartPositions[i] + (position - baseCenters[i]);
             float distanceToShore = Mathf.Abs(position.z - shoreZ);

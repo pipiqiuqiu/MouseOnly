@@ -9,7 +9,6 @@ public sealed class HeadDirectionSweep : MonoBehaviour
     [SerializeField, Min(0f)] private float maxDistanceFromCenter = 2.1f;
 
     private Transform head;
-    private Camera viewCamera;
     private float radius;
     private float height;
     
@@ -30,8 +29,7 @@ public sealed class HeadDirectionSweep : MonoBehaviour
         if (head == null || Mouse.current == null)
             return;
 
-        if (viewCamera == null)
-            viewCamera = Camera.main;
+        Camera viewCamera = Camera.main;
         if (viewCamera == null)
             return;
 
