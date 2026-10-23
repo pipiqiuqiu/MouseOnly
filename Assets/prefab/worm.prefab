@@ -58,6 +58,7 @@ MonoBehaviour:
   stretchDuration: 0.1
   compressedLengthFraction: 0.1
   archHeight: 0.35
+  stopDistancePixels: 30
 --- !u!1 &2868286820206057903
 GameObject:
   m_ObjectHideFlags: 0

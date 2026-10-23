@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public sealed class InchwormLocomotion : MonoBehaviour
 {
@@ -12,16 +13,24 @@ public sealed class InchwormLocomotion : MonoBehaviour
     [Header("Board")]
     [SerializeField] private Transform gridBoard;
 
+    [Header("Floor Detection")]
+    [SerializeField, Min(0.1f)] private float floorProbeDistance = 4f;
+
     [Header("Motion")]
     [SerializeField, Min(0.05f)] private float gatherDuration = 0.6f;
     [SerializeField, Min(0.05f)] private float stretchDuration = 0.8f;
     [SerializeField, Range(0.1f, 0.95f)] private float compressedLengthFraction = 0.7f;
     [SerializeField, Min(0f)] private float archHeight = 0.35f;
 
+    [Header("Mouse Stop")]
+    [SerializeField, Min(0f)] private float stopDistancePixels = 30f;
+
     private enum Phase { Gather, Stretch }
 
     private Phase phase;
     private float phaseTime;
+    private bool waitingAtUnitBoundary;
+    private bool hasCompletedStretch;
     private float restLength;
     private float frontFraction;
     private float backFraction;
@@ -32,6 +41,8 @@ public sealed class InchwormLocomotion : MonoBehaviour
     private Quaternion headRotationStart;
     private Quaternion headRotationTarget;
     private SphereCollider headCollider;
+    private SphereCollider tailCollider;
+    private readonly RaycastHit[] floorHits = new RaycastHit[32];
     private BoxCollider[] floorColliders;
     private FloorBreak[] floorBreaks;
     private FloorBreak currentFloor;
@@ -47,11 +58,18 @@ public sealed class InchwormLocomotion : MonoBehaviour
         }
 
         headCollider = head.GetComponent<SphereCollider>();
-        if (gridBoard != null && (headCollider == null || !CacheFloors()))
+        tailCollider = tail.GetComponent<SphereCollider>();
+        if (headCollider == null || tailCollider == null)
         {
-            Debug.LogError("The head needs a SphereCollider and each floor needs a BoxCollider and FloorBreak.", this);
+            Debug.LogError("The worm's head and tail need SphereColliders.", this);
             enabled = false;
             return;
+        }
+
+        if (gridBoard != null && !CacheFloors())
+        {
+            Debug.LogWarning("Grid floor break effects need BoxColliders and FloorBreak components.", this);
+            gridBoard = null;
         }
 
         Vector3 initialHead = head.position;
@@ -82,25 +100,47 @@ public sealed class InchwormLocomotion : MonoBehaviour
         if (gridBoard != null)
         {
             currentFloor = FindFloorAt(head.position);
-            if (currentFloor == null)
-            {
-                Debug.LogError("The inchworm's head must start on an active floor.", this);
-                enabled = false;
-                return;
-            }
-
-            currentFloor.PlayBreak();
+            if (currentFloor != null)
+                currentFloor.PlayBreak();
         }
 
+        waitingAtUnitBoundary = false;
+        hasCompletedStretch = false;
         BeginGather();
     }
 
     private void LateUpdate()
     {
+        // A floor can be replaced or disabled while the game is running.
+        if (!IsSupportedByTaggedFloor(head.position, headCollider) ||
+            !IsSupportedByTaggedFloor(tail.position, tailCollider))
+            return;
+
+        if (waitingAtUnitBoundary)
+        {
+            if (IsMouseNearDirectionIndicator())
+                return;
+
+            waitingAtUnitBoundary = false;
+            BeginStretch();
+        }
+
         float duration = Mathf.Max(0.05f, phase == Phase.Gather ? gatherDuration : stretchDuration);
-        phaseTime = Mathf.Min(phaseTime + Time.deltaTime, duration);
-        float t = phaseTime / duration;
+        float nextPhaseTime = Mathf.Min(phaseTime + Time.deltaTime, duration);
+        float t = nextPhaseTime / duration;
         float smoothT = t * t * (3f - 2f * t);
+
+        if (phase == Phase.Gather &&
+            !IsSupportedByTaggedFloor(Vector3.Lerp(tailStart, tailTarget, smoothT), tailCollider))
+            return;
+        if (phase == Phase.Stretch &&
+            !IsSupportedByTaggedFloor(Vector3.Lerp(headStart, headTarget, smoothT), headCollider))
+        {
+            BeginStretch();
+            return;
+        }
+
+        phaseTime = nextPhaseTime;
 
         if (phase == Phase.Gather)
         {
@@ -120,11 +160,38 @@ public sealed class InchwormLocomotion : MonoBehaviour
 
         if (phaseTime >= duration)
         {
+            // A movement unit ends with the gather after a stretch.
             if (phase == Phase.Gather)
-                BeginStretch();
+            {
+                if (hasCompletedStretch && IsMouseNearDirectionIndicator())
+                    waitingAtUnitBoundary = true;
+                else
+                    BeginStretch();
+            }
             else
+            {
+                hasCompletedStretch = true;
                 BeginGather();
+            }
         }
+    }
+
+    private bool IsMouseNearDirectionIndicator()
+    {
+        if (stopDistancePixels <= 0f || Mouse.current == null)
+            return false;
+
+        Camera viewCamera = Camera.main;
+        if (viewCamera == null)
+            return false;
+
+        Vector3 indicatorScreenPosition = viewCamera.WorldToScreenPoint(directionIndicator.transform.position);
+        if (indicatorScreenPosition.z <= 0f)
+            return false;
+
+        Vector2 distance = Mouse.current.position.ReadValue() -
+            new Vector2(indicatorScreenPosition.x, indicatorScreenPosition.y);
+        return distance.sqrMagnitude < stopDistancePixels * stopDistancePixels;
     }
 
     private void BeginGather()
@@ -138,7 +205,9 @@ public sealed class InchwormLocomotion : MonoBehaviour
         towardHead.y = 0f;
         float currentLength = towardHead.magnitude;
         float travel = Mathf.Max(0f, currentLength - restLength * compressedLengthFraction);
-        tailTarget = tailStart + towardHead.normalized * travel;
+        Vector3 direction = towardHead.normalized;
+        travel = MaxTravelOnTaggedFloors(tailStart, direction, travel, tailCollider);
+        tailTarget = tailStart + direction * travel;
     }
 
     private void BeginStretch()
@@ -159,8 +228,7 @@ public sealed class InchwormLocomotion : MonoBehaviour
         float alongHeading = Vector3.Dot(fromTail, heading);
         float discriminant = alongHeading * alongHeading + restLength * restLength - fromTail.sqrMagnitude;
         float travel = Mathf.Max(0f, -alongHeading + Mathf.Sqrt(Mathf.Max(0f, discriminant)));
-        if (gridBoard != null)
-            travel = MaxTravelOnFloors(headStart, heading, travel);
+        travel = MaxTravelOnTaggedFloors(headStart, heading, travel, headCollider);
         headTarget = headStart + heading * travel;
 
         headRotationStart = head.rotation;
@@ -195,22 +263,67 @@ public sealed class InchwormLocomotion : MonoBehaviour
         return true;
     }
 
-    private float MaxTravelOnFloors(Vector3 origin, Vector3 direction, float travel)
+    private float MaxTravelOnTaggedFloors(Vector3 origin, Vector3 direction, float travel, SphereCollider segment)
     {
-        if (travel <= 0f)
+        if (travel <= 0f || !IsSupportedByTaggedFloor(origin, segment))
             return 0f;
 
-        // Check the whole route so a single stretch cannot jump over an empty floor.
-        float step = Mathf.Max(0.02f, headCollider.bounds.extents.x * 0.25f);
+        float step = Mathf.Max(0.02f, segment.bounds.extents.x * 0.25f);
         float lastSafe = 0f;
         for (float distance = step; distance < travel; distance += step)
         {
-            if (FindFloorAt(origin + direction * distance) == null)
+            if (!IsSupportedByTaggedFloor(origin + direction * distance, segment))
                 return lastSafe;
             lastSafe = distance;
         }
 
-        return FindFloorAt(origin + direction * travel) == null ? lastSafe : travel;
+        return IsSupportedByTaggedFloor(origin + direction * travel, segment) ? travel : lastSafe;
+    }
+
+    private bool IsSupportedByTaggedFloor(Vector3 position, SphereCollider segment)
+    {
+        float radius = segment.radius * Mathf.Max(
+            Mathf.Abs(segment.transform.lossyScale.x),
+            Mathf.Abs(segment.transform.lossyScale.y),
+            Mathf.Abs(segment.transform.lossyScale.z));
+
+        if (!HasTaggedFloorBelow(position))
+            return false;
+
+        // Probe the edge of the segment as well, so its center cannot leave part of it off the floor.
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = i * Mathf.PI * 0.25f;
+            Vector3 sample = position + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+            if (!HasTaggedFloorBelow(sample))
+                return false;
+        }
+
+        return true;
+    }
+
+    private bool HasTaggedFloorBelow(Vector3 position)
+    {
+        Ray ray = new Ray(position + Vector3.up * 0.5f, Vector3.down);
+        int count = Physics.RaycastNonAlloc(ray, floorHits, floorProbeDistance, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < count; i++)
+        {
+            if (floorHits[i].collider.CompareTag("floor"))
+                return true;
+        }
+
+        // RaycastNonAlloc can fill its buffer before returning every overlapping floor.
+        if (count == floorHits.Length)
+        {
+            RaycastHit[] allHits = Physics.RaycastAll(ray, floorProbeDistance, ~0, QueryTriggerInteraction.Collide);
+            foreach (RaycastHit hit in allHits)
+            {
+                if (hit.collider.CompareTag("floor"))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private void UpdateCurrentFloor()
