@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+[DefaultExecutionOrder(300)]
 public sealed class WaveMetaballs : MonoBehaviour
 {
     private const int MaxMetaballs = 64;
@@ -11,8 +12,11 @@ public sealed class WaveMetaballs : MonoBehaviour
 
     [Header("Source Points")]
     [SerializeField] private Transform waveRoot;
+    [SerializeField] private GameObject sourcePointPrefab;
     [SerializeField] private Material metaballMaterial;
     [SerializeField, Range(1, MaxMetaballs)] private int pointCount = 50;
+    [SerializeField] private bool moveSourcePointsWithMetaballs;
+    [SerializeField] private bool showSourcePointModels;
     [SerializeField] private int randomSeed = 12345;
 
     [Header("Wave Shape (World Units)")]
@@ -22,6 +26,7 @@ public sealed class WaveMetaballs : MonoBehaviour
     [SerializeField, Min(0f)] private float rightwardSpeed = 0.9f;
 
     [Header("Tide (World Units)")]
+    [SerializeField] private SliderPush tideSlider;
     [SerializeField, Min(0f)] private float tideDistance = 1f;
     [SerializeField, Min(0f)] private float tideCyclesPerSecond = 0.12f;
 
@@ -35,15 +40,28 @@ public sealed class WaveMetaballs : MonoBehaviour
     [SerializeField, Min(0f)] private float minimumSizeDistance = 4.2f;
     [SerializeField] private Vector2 shoreSizeScaleRange = new Vector2(0.75f, 1.35f);
 
+    [SerializeField, Min(0.01f)] private float resumeBlendDuration = 0.4f;
+
+    private float currentTideOffset;
+    private float pausedTideOffset;
+    private float resumeStartTideOffset;
+    private float resumeBlendElapsed;
+    private bool blendingToAutomatic;
+    
     private readonly Vector4[] centers = new Vector4[MaxMetaballs];
     private Transform[] pointMarkers;
     private Vector3[] baseCenters;
     private float[] radii;
     private float[] waveAmplitudeVariation;
     private float[] waveSectionAmplitudes;
+    private Transform[] sourcePointTransforms;
+    private Vector3[] sourcePointStartPositions;
     private float elapsedTime;
     private float waveTravelDistance;
-    private MeshRenderer[] sourceRenderers;
+    private float sliderStartPosition;
+    private float travelDistanceAtPause;
+    private bool sliderControlActive;
+    private Renderer[] sourceRenderers;
     private bool[] sourceVisibility;
     private MeshRenderer surfaceRenderer;
     private Mesh surfaceMesh;
@@ -58,10 +76,19 @@ public sealed class WaveMetaballs : MonoBehaviour
             return;
         }
 
-        sourceRenderers = waveRoot.GetComponentsInChildren<MeshRenderer>(true);
+        SpriteRenderer[] sprites = waveRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        sourceRenderers = sprites.Length == pointCount
+            ? sprites
+            : waveRoot.GetComponentsInChildren<MeshRenderer>(true);
         if (!TryReadPointCenters(out baseCenters))
         {
             Debug.LogError($"WaveMetaballs could not find {pointCount} source points under {waveRoot.name}.", this);
+            enabled = false;
+            return;
+        }
+        if (moveSourcePointsWithMetaballs && sourcePointTransforms == null)
+        {
+            Debug.LogError("Moving source points requires one SpriteRenderer or MeshRenderer per metaball.", this);
             enabled = false;
             return;
         }
@@ -95,10 +122,8 @@ public sealed class WaveMetaballs : MonoBehaviour
 
         sourceVisibility = new bool[sourceRenderers.Length];
         for (int i = 0; i < sourceRenderers.Length; i++)
-        {
             sourceVisibility[i] = sourceRenderers[i].enabled;
-            sourceRenderers[i].enabled = false;
-        }
+        SetSourceVisible(false);
 
         pointMarkers = new Transform[pointCount];
         for (int i = 0; i < pointCount; i++)
@@ -110,19 +135,65 @@ public sealed class WaveMetaballs : MonoBehaviour
 
         CreateSurface();
         properties = new MaterialPropertyBlock();
-        UpdateWave(0f);
+        RefreshWave(0f);
     }
 
-    private void Update()
+    private void LateUpdate()
     {
         if (surfaceRenderer != null)
-        {
-            elapsedTime += Time.deltaTime;
-            waveTravelDistance += Mathf.Max(0f, rightwardSpeed) * Time.deltaTime;
-            UpdateWave(elapsedTime);
-        }
+            RefreshWave(Time.deltaTime);
     }
 
+    private void RefreshWave(float deltaTime)
+    {
+        if (sliderControlActive)
+        {
+            float sweepDuration = 2f / Mathf.Max(0.01f, tideCyclesPerSecond);
+            waveTravelDistance = travelDistanceAtPause + Mathf.Max(0f, rightwardSpeed) *
+                sweepDuration * (tideSlider.NormalizedDownPosition - sliderStartPosition);
+        }
+        else
+        {
+            elapsedTime += deltaTime;
+            if (blendingToAutomatic)
+                resumeBlendElapsed += deltaTime;
+            waveTravelDistance += Mathf.Max(0f, rightwardSpeed) * deltaTime;
+        }
+        UpdateWave(elapsedTime);
+    }
+
+    public void SwitchToSliderControl()
+    {
+        if (sliderControlActive)
+            return;
+        if (tideSlider == null)
+        {
+            Debug.LogWarning("WaveMetaballs needs a tide slider before it can switch to slider control.", this);
+            return;
+        }
+
+        sliderStartPosition = tideSlider.NormalizedDownPosition;
+        travelDistanceAtPause = waveTravelDistance;
+        
+        //record tide offset when pause
+        pausedTideOffset = currentTideOffset;
+        blendingToAutomatic = false;
+        sliderControlActive = true;
+    }
+
+    public void ResumeAutomaticControl()
+    {
+        if (!sliderControlActive)
+            return;
+
+        // Start the blend from the last frame actually shown on screen.
+        resumeStartTideOffset = currentTideOffset;
+
+        resumeBlendElapsed = 0f;
+        blendingToAutomatic = true;
+        sliderControlActive = false;
+    }
+    
     private static float RandomInRange(System.Random random, Vector2 range)
     {
         float low = Mathf.Min(range.x, range.y);
@@ -141,6 +212,7 @@ public sealed class WaveMetaballs : MonoBehaviour
     {
         if (surfaceRenderer != null)
             surfaceRenderer.enabled = false;
+        RestoreSourcePointPositions();
         SetSourceVisible(true);
     }
 
@@ -150,7 +222,7 @@ public sealed class WaveMetaballs : MonoBehaviour
             Destroy(surfaceMesh);
     }
 
-    private void SetSourceVisible(bool visible)
+    private void SetSourceVisible(bool restoreOriginal)
     {
         if (sourceRenderers == null || sourceVisibility == null)
             return;
@@ -158,24 +230,73 @@ public sealed class WaveMetaballs : MonoBehaviour
         for (int i = 0; i < sourceRenderers.Length; i++)
         {
             if (sourceRenderers[i] != null)
-                sourceRenderers[i].enabled = visible && sourceVisibility[i];
+                sourceRenderers[i].enabled = sourceVisibility[i] &&
+                    (restoreOriginal || (moveSourcePointsWithMetaballs && showSourcePointModels));
+        }
+    }
+
+    private void RestoreSourcePointPositions()
+    {
+        if (!moveSourcePointsWithMetaballs || sourcePointTransforms == null)
+            return;
+        for (int i = 0; i < sourcePointTransforms.Length; i++)
+        {
+            if (sourcePointTransforms[i] != null)
+                sourcePointTransforms[i].position = sourcePointStartPositions[i];
         }
     }
 
     private bool TryReadPointCenters(out Vector3[] result)
     {
-        // Most OBJ imports create a renderer for each original point mesh.
         if (sourceRenderers.Length == pointCount)
         {
             result = new Vector3[pointCount];
+            sourcePointTransforms = new Transform[pointCount];
+            sourcePointStartPositions = new Vector3[pointCount];
+            var prefabCenters = new List<Vector3>();
+            if (sourceRenderers[0] is SpriteRenderer && sourcePointPrefab != null)
+            {
+                foreach (MeshFilter filter in sourcePointPrefab.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (filter.sharedMesh == null)
+                        continue;
+                    Vector3 center = filter.transform.TransformPoint(filter.sharedMesh.bounds.center);
+                    prefabCenters.Add(waveRoot.TransformPoint(
+                        sourcePointPrefab.transform.InverseTransformPoint(center)));
+                }
+            }
+            bool usePrefabCenters = prefabCenters.Count == pointCount;
+            if (sourceRenderers[0] is SpriteRenderer && !usePrefabCenters)
+            {
+                Debug.LogError($"WaveMetaballs found {prefabCenters.Count} meshes in the source model, but needs {pointCount} to position the Sprites.", this);
+                result = null;
+                return false;
+            }
+            prefabCenters.Sort((a, b) => a.x.CompareTo(b.x));
+            int[] sortedIndices = new int[pointCount];
             for (int i = 0; i < pointCount; i++)
-                result[i] = sourceRenderers[i].bounds.center;
-            Array.Sort(result, (a, b) => a.x.CompareTo(b.x));
+                sortedIndices[i] = i;
+            Array.Sort(sortedIndices, (a, b) =>
+                usePrefabCenters
+                    ? string.CompareOrdinal(sourceRenderers[a].name, sourceRenderers[b].name)
+                    : sourceRenderers[a].bounds.center.x.CompareTo(sourceRenderers[b].bounds.center.x));
+            for (int i = 0; i < pointCount; i++)
+            {
+                Renderer renderer = sourceRenderers[sortedIndices[i]];
+                result[i] = usePrefabCenters ? prefabCenters[i] : renderer.bounds.center;
+                sourcePointTransforms[i] = renderer.transform;
+                if (usePrefabCenters)
+                {
+                    // The source meshes lie on XZ; sprites start on their local XY plane.
+                    renderer.transform.rotation = waveRoot.rotation * Quaternion.Euler(90f, 0f, 0f);
+                    renderer.transform.position += result[i] - renderer.bounds.center;
+                }
+                sourcePointStartPositions[i] = renderer.transform.position;
+            }
             return true;
         }
 
-        // Some import settings combine the OBJ groups into one renderer. In that
-        // case, each disconnected piece of the mesh is one original point.
+
         var points = new List<Vector3>();
         foreach (MeshFilter filter in waveRoot.GetComponentsInChildren<MeshFilter>(true))
         {
@@ -256,9 +377,13 @@ public sealed class WaveMetaballs : MonoBehaviour
         }
         minX -= margin;
         maxX += margin;
-        minZ -= maxWaveAmplitude + tideDistance + margin;
-        maxZ += maxWaveAmplitude + tideDistance + margin;
-        float surfaceY = baseCenters[0].y + 0.01f;
+        // Slider motion is centered on the tide position captured at pause.
+        float maxTideOffset = tideSlider != null ? 2f * tideDistance : tideDistance;
+        minZ -= maxWaveAmplitude + maxTideOffset + margin;
+        maxZ += maxWaveAmplitude + maxTideOffset + margin;
+        // Place the visible point models just above the fused surface in the top-down scene.
+        float surfaceY = baseCenters[0].y +
+            (moveSourcePointsWithMetaballs && showSourcePointModels ? -0.01f : 0.01f);
 
         surfaceMesh = new Mesh { name = "Wave Metaball Surface" };
         surfaceMesh.vertices = new[]
@@ -283,7 +408,20 @@ public sealed class WaveMetaballs : MonoBehaviour
     private void UpdateWave(float time)
     {
         float baseX = baseCenters[0].x;
-        float tideOffset = tideDistance * Mathf.Sin(2f * Mathf.PI * tideCyclesPerSecond * time);
+        float automaticTideOffset = tideDistance * Mathf.Sin(2f * Mathf.PI * tideCyclesPerSecond * time);
+        float tideOffset = automaticTideOffset;
+        if (sliderControlActive)
+            tideOffset = pausedTideOffset - tideDistance * Mathf.Sin(4f * Mathf.PI *
+                (tideSlider.NormalizedDownPosition - sliderStartPosition));
+        else if (blendingToAutomatic)
+        {
+            float blendProgress = Mathf.Clamp01(resumeBlendElapsed / Mathf.Max(0.01f, resumeBlendDuration));
+            float easedProgress = blendProgress * blendProgress * (3f - 2f * blendProgress);
+            tideOffset = Mathf.Lerp(resumeStartTideOffset, automaticTideOffset, easedProgress);
+            if (blendProgress >= 1f)
+                blendingToAutomatic = false;
+        }
+        currentTideOffset = tideOffset;
         float shapeGrowth = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(time));
         float waveLength = Mathf.Max(0.01f, wavelength);
         float shoreZ = shoreline.position.z;
@@ -303,6 +441,9 @@ public sealed class WaveMetaballs : MonoBehaviour
                 * waveAmplitudeVariation[i];
             position.z += shapeGrowth * waveAmplitude * Mathf.Sin(2f * Mathf.PI * wavePosition) + tideOffset;
             pointMarkers[i].position = position;
+            if (moveSourcePointsWithMetaballs)
+                // Keep each source point at the same center as its metaball.
+                sourcePointTransforms[i].position = sourcePointStartPositions[i] + (position - baseCenters[i]);
             float distanceToShore = Mathf.Abs(position.z - shoreZ);
             float shoreBlend = Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(nearDistance, farDistance, distanceToShore));
@@ -323,7 +464,10 @@ public sealed class WaveMetaballs : MonoBehaviour
             return;
 
         Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.7f);
-        MeshRenderer[] renderers = waveRoot.GetComponentsInChildren<MeshRenderer>(true);
+        SpriteRenderer[] sprites = waveRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        Renderer[] renderers = sprites.Length == pointCount
+            ? sprites
+            : waveRoot.GetComponentsInChildren<MeshRenderer>(true);
         if (renderers.Length != pointCount)
             return;
         float previewRadius = Mathf.Max(0.01f, (radiusRange.x + radiusRange.y) * 0.5f);
@@ -335,7 +479,7 @@ public sealed class WaveMetaballs : MonoBehaviour
         if (shoreline != null)
         {
             float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
-            foreach (MeshRenderer renderer in renderers)
+            foreach (Renderer renderer in renderers)
             {
                 minX = Mathf.Min(minX, renderer.bounds.center.x);
                 maxX = Mathf.Max(maxX, renderer.bounds.center.x);

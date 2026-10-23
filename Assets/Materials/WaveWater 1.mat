@@ -29,8 +29,8 @@ Material:
     - _UseMask: 1
     m_Colors:
     - _BaseColor: {r: 0.18431373, g: 0.18431373, b: 0.20000002, a: 1}
-    - _EdgeColor: {r: 0.21864237, g: 0.2288239, b: 0.34591186, a: 1}
-    - _MaskCenter: {r: -0.67, g: -0.43, b: 0, a: 0}
-    - _MaskSize: {r: 13.6, g: 6.95, b: 0, a: 0}
+    - _EdgeColor: {r: 0.33573797, g: 0.34481686, b: 0.48099998, a: 1}
+    - _MaskCenter: {r: -0.82, g: -0.52, b: 0, a: 0}
+    - _MaskSize: {r: 12.6, g: 6.95, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

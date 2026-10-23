@@ -11,6 +11,19 @@ public sealed class SliderPush : MonoBehaviour
     private Vector3[] previousPositions;
     private Transform handle;
 
+    public float NormalizedDownPosition
+    {
+        get
+        {
+            if (!TryGetTravelRange(out Vector3 axis, out float lowerLimit, out float upperLimit))
+                return 0f;
+
+            float handlePosition = Vector3.Dot(HandleCenter(), axis);
+            return Mathf.Clamp01((upperLimit - handlePosition) /
+                (upperLimit - lowerLimit));
+        }
+    }
+
     private void Start()
     {
         if (player == null)
@@ -42,16 +55,16 @@ public sealed class SliderPush : MonoBehaviour
         if (!handleCollider.enabled || !handleCollider.gameObject.activeInHierarchy)
             return;
 
-        Bounds trackBounds = track.bounds;
-        Bounds handleBounds = handleCollider.bounds;
-        float lowerLimit = trackBounds.min.z + handleBounds.extents.z;
-        float upperLimit = trackBounds.max.z - handleBounds.extents.z;
-        if (lowerLimit > upperLimit)
+        if (!TryGetTravelRange(out Vector3 axis, out float lowerLimit, out float upperLimit))
             return;
 
-        float handleZ = handle.position.z;
-        float downTarget = handleZ;
-        float upTarget = handleZ;
+        Vector3 handleCenter = HandleCenter();
+        float handlePosition = Vector3.Dot(handleCenter, axis);
+        float handleHalfLength = ColliderHalfExtentAlong(axis);
+        Vector3 widthAxis = Vector3.ProjectOnPlane(track.transform.TransformVector(Vector3.right), axis).normalized;
+        float handleHalfWidth = ColliderHalfExtentAlong(widthAxis);
+        float downTarget = handlePosition;
+        float upTarget = handlePosition;
 
         for (int i = 0; i < playerSegments.Length; i++)
         {
@@ -67,28 +80,66 @@ public sealed class SliderPush : MonoBehaviour
                 Mathf.Abs(segment.transform.lossyScale.x),
                 Mathf.Abs(segment.transform.lossyScale.y),
                 Mathf.Abs(segment.transform.lossyScale.z));
-            if (current.x + radius < handleBounds.min.x ||
-                current.x - radius > handleBounds.max.x)
+            if (Mathf.Abs(Vector3.Dot(current - handleCenter, widthAxis)) > handleHalfWidth + radius)
                 continue;
 
-            float movement = current.z - previous.z;
-            if (movement < -0.0001f && previous.z >= handleZ &&
-                current.z - radius < handleBounds.max.z)
+            float previousPosition = Vector3.Dot(previous, axis);
+            float currentPosition = Vector3.Dot(current, axis);
+            float movement = currentPosition - previousPosition;
+            if (movement < -0.0001f && previousPosition >= handlePosition &&
+                currentPosition - radius < handlePosition + handleHalfLength)
             {
                 downTarget = Mathf.Min(downTarget,
-                    current.z - radius - handleBounds.extents.z);
+                    currentPosition - radius - handleHalfLength);
             }
-            else if (movement > 0.0001f && previous.z <= handleZ &&
-                     current.z + radius > handleBounds.min.z)
+            else if (movement > 0.0001f && previousPosition <= handlePosition &&
+                     currentPosition + radius > handlePosition - handleHalfLength)
             {
                 upTarget = Mathf.Max(upTarget,
-                    current.z + radius + handleBounds.extents.z);
+                    currentPosition + radius + handleHalfLength);
             }
         }
 
-        float target = handleZ - downTarget > upTarget - handleZ ? downTarget : upTarget;
+        float target = handlePosition - downTarget > upTarget - handlePosition ? downTarget : upTarget;
         target = Mathf.Clamp(target, lowerLimit, upperLimit);
-        handle.position = new Vector3(handle.position.x, handle.position.y, target);
+        handle.position += axis * (target - handlePosition);
+    }
+
+    private bool TryGetTravelRange(out Vector3 axis, out float lowerLimit, out float upperLimit)
+    {
+        axis = Vector3.zero;
+        lowerLimit = upperLimit = 0f;
+        if (track == null || handleCollider == null)
+            return false;
+
+        // The track's local Y axis follows its long edge, regardless of how the
+        // whole slider is rotated or scaled in the scene.
+        Bounds localBounds = track.localBounds;
+        Vector3 top = track.transform.TransformPoint(localBounds.center + Vector3.up * localBounds.extents.y);
+        Vector3 bottom = track.transform.TransformPoint(localBounds.center - Vector3.up * localBounds.extents.y);
+        Vector3 travel = top - bottom;
+        if (travel.sqrMagnitude < 0.000001f)
+            return false;
+
+        axis = travel.normalized;
+        float handleHalfLength = ColliderHalfExtentAlong(axis);
+        lowerLimit = Vector3.Dot(bottom, axis) + handleHalfLength;
+        upperLimit = Vector3.Dot(top, axis) - handleHalfLength;
+        return upperLimit - lowerLimit > 0.0001f;
+    }
+
+    private Vector3 HandleCenter()
+    {
+        return handleCollider.transform.TransformPoint(handleCollider.center);
+    }
+
+    private float ColliderHalfExtentAlong(Vector3 direction)
+    {
+        Vector3 halfSize = handleCollider.size * 0.5f;
+        Transform colliderTransform = handleCollider.transform;
+        return Mathf.Abs(Vector3.Dot(direction, colliderTransform.TransformVector(new Vector3(halfSize.x, 0f, 0f))))
+            + Mathf.Abs(Vector3.Dot(direction, colliderTransform.TransformVector(new Vector3(0f, halfSize.y, 0f))))
+            + Mathf.Abs(Vector3.Dot(direction, colliderTransform.TransformVector(new Vector3(0f, 0f, halfSize.z))));
     }
 
     private static Vector3 SegmentCenter(SphereCollider segment)
