@@ -10,13 +10,19 @@ public class PiggyAnimationController : MonoBehaviour
     
     private bool hasStoppedWalking = false;
     private bool hasStoppedWalkingBack = false;
+    private bool hasEnteredDown = false;
 
     public bool isEnd;
+    public bool IsReady => !hasTriggered;
+    
+
     void Update()
     {
         if (button.isRight && !hasTriggered)
         {
             hasTriggered = true;
+            isEnd = false;
+            hasEnteredDown = false;
             animator.SetTrigger("PiggyStart");
         }
         
@@ -40,7 +46,7 @@ public class PiggyAnimationController : MonoBehaviour
         }
 
         
-        if (!positionState.IsName("Piggy_walkposition"))
+        if (positionState.IsName("Piggy_walkposition"))
         {
             hasStoppedWalking = false;
         }
@@ -58,7 +64,17 @@ public class PiggyAnimationController : MonoBehaviour
         
         if (state.IsName("Piggy_down"))
         {
+            hasEnteredDown = true;
+        }
+
+        if (hasEnteredDown && state.IsName("New State") &&
+            positionState.IsName("New State") &&
+            !animator.IsInTransition(0) && !animator.IsInTransition(1))
+        {
             isEnd = true;
+            hasTriggered = false;
+            hasEnteredDown = false;
+            button.CompleteCycle();
         }
         
     }
