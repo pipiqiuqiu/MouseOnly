@@ -1,47 +1,45 @@
 using UnityEngine;
 using System.Collections;
+
 public class FinishLine : MonoBehaviour
 {
     public bool piggyWin = false;
     public bool playerWin = false;
 
-    public float checkInterval = 10f;
-    private bool winnerAnnounced = false;
+    public float cooldownTime = 5f;
+
+    private bool isCooldown = false;
 
     void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("RunningPiggy"))
-            piggyWin = true;
-        else if (other.CompareTag("Player"))
-            playerWin = true;
-        else
+        if (isCooldown)
             return;
 
-        CheckWin(); 
-    }
-
-    IEnumerator CheckWinRoutine()
-    {
-        while (true)
+        if (other.CompareTag("RunningPiggy"))
         {
-            yield return new WaitForSeconds(checkInterval);
-            CheckWin(); 
-        }
-    }
-
-    void CheckWin()
-    {
-        if (winnerAnnounced) return;
-
-        if (piggyWin)
-        {
+            piggyWin = true;
             Debug.Log("Piggy Wins!");
-            winnerAnnounced = true;
+
+            StartCoroutine(WinCooldown());
         }
-        else if (playerWin)
+        else if (other.CompareTag("Player"))
         {
+            playerWin = true;
             Debug.Log("Player Wins!");
-            winnerAnnounced = true;
+
+            StartCoroutine(WinCooldown());
         }
+    }
+
+    IEnumerator WinCooldown()
+    {
+        isCooldown = true;
+
+        yield return new WaitForSeconds(cooldownTime);
+        
+        piggyWin = false;
+        playerWin = false;
+
+        isCooldown = false;
     }
 }
