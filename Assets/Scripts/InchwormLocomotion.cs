@@ -49,6 +49,8 @@ public sealed class InchwormLocomotion : MonoBehaviour
 
     private void OnEnable()
     {
+        Cursor.visible = false;
+        
         if (head == null || middleFront == null || middleBack == null || tail == null ||
             directionIndicator == null || head.parent != transform)
         {
