@@ -10,6 +10,13 @@ public sealed class SliderPush : MonoBehaviour
     private SphereCollider[] playerSegments;
     private Vector3[] previousPositions;
     private Transform handle;
+    private bool interactionEnabled;
+
+    public void SetInteractionEnabled(bool value)
+    {
+        interactionEnabled = value;
+        SyncPlayerPositions();
+    }
 
     public float NormalizedDownPosition
     {
@@ -52,6 +59,12 @@ public sealed class SliderPush : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (!interactionEnabled)
+        {
+            SyncPlayerPositions();
+            return;
+        }
+
         if (!handleCollider.enabled || !handleCollider.gameObject.activeInHierarchy)
             return;
 
@@ -103,6 +116,15 @@ public sealed class SliderPush : MonoBehaviour
         float target = handlePosition - downTarget > upTarget - handlePosition ? downTarget : upTarget;
         target = Mathf.Clamp(target, lowerLimit, upperLimit);
         handle.position += axis * (target - handlePosition);
+    }
+
+    private void SyncPlayerPositions()
+    {
+        if (playerSegments == null || previousPositions == null)
+            return;
+
+        for (int i = 0; i < playerSegments.Length; i++)
+            previousPositions[i] = SegmentCenter(playerSegments[i]);
     }
 
     private bool TryGetTravelRange(out Vector3 axis, out float lowerLimit, out float upperLimit)

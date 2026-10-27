@@ -69,6 +69,9 @@ public sealed class WaveMetaballs : MonoBehaviour
 
     private void Awake()
     {
+        if (tideSlider != null)
+            tideSlider.SetInteractionEnabled(false);
+
         if (waveRoot == null || metaballMaterial == null || shoreline == null)
         {
             Debug.LogError("WaveMetaballs needs the wave root, metaball material, and shoreline reference.", this);
@@ -179,6 +182,7 @@ public sealed class WaveMetaballs : MonoBehaviour
         pausedTideOffset = currentTideOffset;
         blendingToAutomatic = false;
         sliderControlActive = true;
+        tideSlider.SetInteractionEnabled(true);
     }
 
     public void ResumeAutomaticControl()
@@ -192,6 +196,8 @@ public sealed class WaveMetaballs : MonoBehaviour
         resumeBlendElapsed = 0f;
         blendingToAutomatic = true;
         sliderControlActive = false;
+        if (tideSlider != null)
+            tideSlider.SetInteractionEnabled(false);
     }
     
     private static float RandomInRange(System.Random random, Vector2 range)
@@ -203,6 +209,9 @@ public sealed class WaveMetaballs : MonoBehaviour
 
     private void OnEnable()
     {
+        if (tideSlider != null)
+            tideSlider.SetInteractionEnabled(false);
+
         if (surfaceRenderer != null)
             surfaceRenderer.enabled = true;
         SetSourceVisible(false);
@@ -210,6 +219,9 @@ public sealed class WaveMetaballs : MonoBehaviour
 
     private void OnDisable()
     {
+        if (tideSlider != null)
+            tideSlider.SetInteractionEnabled(false);
+
         if (surfaceRenderer != null)
             surfaceRenderer.enabled = false;
         RestoreSourcePointPositions();
