@@ -8,6 +8,7 @@ TagManager:
   - CameraCollider
   - Piggy
   - RunningPiggy
+  - water
   layers:
   - Default
   - TransparentFX
