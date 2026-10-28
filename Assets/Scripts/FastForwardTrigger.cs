@@ -10,7 +10,7 @@ public class FastForwardTrigger : MonoBehaviour
     public bool isEnd = false;
     
     public AudioSource targetAudio;
-    
+    public AudioSource DamageAudio;
     void OnTriggerEnter(Collider other)
     {
         if (!other.CompareTag("Player") ||
@@ -37,6 +37,7 @@ public class FastForwardTrigger : MonoBehaviour
 
                 case 2: // quick3
                     targetAudio.Stop();
+                    DamageAudio.Play();
                     break;
             }
         }

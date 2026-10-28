@@ -28,6 +28,8 @@ public class AfterimageSpawner : MonoBehaviour
     {
         sourceRenderer = GetComponent<SpriteRenderer>();
         sourceAnimator = GetComponent<Animator>();
+        if (pipiRunInWater == null)
+            pipiRunInWater = GetComponent<AudioSource>();
         if (sourceRenderer != null)
             sourceRenderer.enabled = false;
         if (sourceAnimator != null)
@@ -188,6 +190,8 @@ public class AfterimageSpawner : MonoBehaviour
         activeAfterimages.Add(clone);
         lastSpawnPosition = transform.position;
         hasSpawned = true;
+        if (pipiRunInWater != null && pipiRunInWater.clip != null)
+            pipiRunInWater.PlayOneShot(pipiRunInWater.clip);
         StartCoroutine(FadeAndDestroy(clone));
     }
 

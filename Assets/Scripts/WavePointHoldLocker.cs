@@ -20,8 +20,19 @@ public sealed class WavePointHoldLocker : MonoBehaviour
     private float elapsed;
     private bool completed;
 
+    public AudioSource emmBing;
+    private bool isPlayedEmmBing = false;
+
     private void Awake()
     {
+        if (emmBing == null)
+            emmBing = GetComponent<AudioSource>();
+        if (emmBing != null)
+        {
+            emmBing.playOnAwake = false;
+            emmBing.Stop();
+        }
+
         trigger = GetComponent<BoxCollider>();
         originalScale = transform.localScale;
         if (trigger != null)
@@ -35,7 +46,11 @@ public sealed class WavePointHoldLocker : MonoBehaviour
     {
         if (completed || other.GetComponentInParent<InchwormLocomotion>() == null)
             return;
-
+        if (!isPlayedEmmBing && emmBing != null)
+        {
+            emmBing.Play();
+            isPlayedEmmBing = true;
+        }
         playerColliders.Add(other);
     }
 
@@ -44,6 +59,9 @@ public sealed class WavePointHoldLocker : MonoBehaviour
         if (!playerColliders.Remove(other) || playerColliders.Count != 0 || completed)
             return;
 
+        if (emmBing != null)
+            emmBing.Stop();
+        isPlayedEmmBing = false;
         elapsed = 0f;
         ApplyScale(1f);
     }
