@@ -10,7 +10,8 @@ public class PiggyButtonAnimation : MonoBehaviour
     
     public PiggyAnimationController controller;
     private bool hasPlayedReturnAnimation = false;
-    
+
+    public AudioSource ringAudio;
     private void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Player") && !isRight &&
@@ -18,6 +19,7 @@ public class PiggyButtonAnimation : MonoBehaviour
         {
             animator.Play("trigger", 0, 0f);
             RingAnimator.SetBool("RingTrigger", true);
+            ringAudio.Play();
             ComputerAnimator.SetBool("isTrigger", true);
             isRight = true;
             hasPlayedReturnAnimation = false;
@@ -27,6 +29,7 @@ public class PiggyButtonAnimation : MonoBehaviour
         {
             animator.Play("triggerToLeft", 0, 0f);
             RingAnimator.SetBool("RingTrigger", false);
+            ringAudio.Stop();
             ComputerAnimator.SetBool("isTrigger", false);
             hasPlayedReturnAnimation = true;
         }

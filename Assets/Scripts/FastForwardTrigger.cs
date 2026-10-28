@@ -8,22 +8,45 @@ public class FastForwardTrigger : MonoBehaviour
 
     private int currentIndex = 0;
     public bool isEnd = false;
+    
+    public AudioSource targetAudio;
+    
     void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
+        if (!other.CompareTag("Player") ||
+            targetAnimator == null ||
+            triggerNames == null ||
+            triggerNames.Length == 0)
+            return;
+
+        targetAnimator.SetTrigger(triggerNames[currentIndex]);
+
+        if (targetAudio != null)
         {
-            if (targetAnimator == null || triggerNames.Length == 0)
-                return;
-
-            targetAnimator.SetTrigger(triggerNames[currentIndex]);
-
-            currentIndex++;
-
-            if (currentIndex >= triggerNames.Length)
+            switch (currentIndex)
             {
-                isEnd = true;
-                currentIndex = 0;
+                case 0: // quick
+                    targetAudio.pitch = 1.5f;
+                    if (!targetAudio.isPlaying) targetAudio.Play();
+                    break;
+
+                case 1: // quick2
+                    targetAudio.pitch = 2f;
+                    if (!targetAudio.isPlaying) targetAudio.Play();
+                    break;
+
+                case 2: // quick3
+                    targetAudio.Stop();
+                    break;
             }
         }
+
+        currentIndex++;
+
+        if (currentIndex >= triggerNames.Length)
+        {
+            isEnd = true;
+        }
     }
+    
 }

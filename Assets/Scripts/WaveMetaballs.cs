@@ -66,9 +66,17 @@ public sealed class WaveMetaballs : MonoBehaviour
     private MeshRenderer surfaceRenderer;
     private Mesh surfaceMesh;
     private MaterialPropertyBlock properties;
+    private AudioSource tideAudio;
 
     private void Awake()
     {
+        tideAudio = GetComponent<AudioSource>();
+        if (tideAudio != null)
+        {
+            tideAudio.playOnAwake = false;
+            tideAudio.loop = true;
+        }
+
         if (tideSlider != null)
             tideSlider.SetInteractionEnabled(false);
 
@@ -183,6 +191,8 @@ public sealed class WaveMetaballs : MonoBehaviour
         blendingToAutomatic = false;
         sliderControlActive = true;
         tideSlider.SetInteractionEnabled(true);
+        if (tideAudio != null)
+            tideAudio.Pause();
     }
 
     public void ResumeAutomaticControl()
@@ -198,6 +208,17 @@ public sealed class WaveMetaballs : MonoBehaviour
         sliderControlActive = false;
         if (tideSlider != null)
             tideSlider.SetInteractionEnabled(false);
+        PlayTideAudio();
+    }
+
+    private void PlayTideAudio()
+    {
+        if (!Application.isPlaying || tideAudio == null)
+            return;
+
+        tideAudio.UnPause();
+        if (!tideAudio.isPlaying)
+            tideAudio.Play();
     }
     
     private static float RandomInRange(System.Random random, Vector2 range)
@@ -212,6 +233,9 @@ public sealed class WaveMetaballs : MonoBehaviour
         if (tideSlider != null)
             tideSlider.SetInteractionEnabled(false);
 
+        if (!sliderControlActive)
+            PlayTideAudio();
+
         if (surfaceRenderer != null)
             surfaceRenderer.enabled = true;
         SetSourceVisible(false);
@@ -221,6 +245,9 @@ public sealed class WaveMetaballs : MonoBehaviour
     {
         if (tideSlider != null)
             tideSlider.SetInteractionEnabled(false);
+
+        if (tideAudio != null)
+            tideAudio.Pause();
 
         if (surfaceRenderer != null)
             surfaceRenderer.enabled = false;

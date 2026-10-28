@@ -22,6 +22,8 @@ public class AfterimageSpawner : MonoBehaviour
     private SpriteRenderer sourceRenderer;
     private Animator sourceAnimator;
 
+    public AudioSource pipiRunInWater;
+
     void Awake()
     {
         sourceRenderer = GetComponent<SpriteRenderer>();
